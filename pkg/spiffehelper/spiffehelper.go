@@ -77,7 +77,7 @@ func NewHelper(config *Config) (*Sidecar, error) {
 // Starts the workload API client to listen for new SVID updates
 // When a new SVID is received on the updateChan, the SVID certificates
 // are stored in disk and a restart signal is sent to the proxy's process
-func (s *Sidecar) RunDaemon(ctx context.Context) error {
+func (s *Sidecar) RunDaemon(ctx context.Context) {
 	// Create channel for interrupt signal
 	interrupt := make(chan os.Signal, 1)
 	errorChan := make(chan error, 1)
@@ -116,11 +116,12 @@ func (s *Sidecar) RunDaemon(ctx context.Context) error {
 		case svidResponse := <-updateChan:
 			updateCertificates(s, svidResponse)
 		case <-interrupt:
-			return nil
+			return
 		case err := <-errorChan:
-			return err
+			log.Println(err.Error())
+			return
 		case <-ctx.Done():
-			return nil
+			return
 		}
 	}
 }
