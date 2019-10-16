@@ -1,4 +1,4 @@
-module github.com/spiffe/spiffe-helper
+module github.com/faisal-memon/spiffe-helper
 
 go 1.13
 
