@@ -1,4 +1,4 @@
-package main
+package spiffehelper
 
 import (
 	"context"
@@ -20,15 +20,32 @@ import (
 	"github.com/andres-erbsen/clock"
 	proto "github.com/spiffe/go-spiffe/proto/spiffe/workload"
 	"github.com/spiffe/spire/api/workload"
+	"golang.org/x/sys/unix"
+
 )
 
-// sidecar is the component that consumes the Workload API and renews certs
+type Config struct {
+        AgentAddress       string
+        Cmd                string
+        CmdArgs            string
+        CertDir            string
+        PidFile            string
+        SvidFileName       string
+        SvidKeyFileName    string
+        SvidBundleFileName string
+        RenewSignal        string
+        Timeout            string
+}
+
+
+// Sidecar is the component that consumes the Workload API and renews certs
 // implements the interface Sidecar
-type sidecar struct {
-	config            *SidecarConfig
+type Sidecar struct {
+	config            *Config
 	processRunning    int32
 	process           *os.Process
 	workloadAPIClient workload.X509Client
+	certReadyChan     chan struct{}
 }
 
 const (
@@ -43,15 +60,16 @@ const (
 )
 
 // NewSidecar creates a new sidecar
-func NewSidecar(config *SidecarConfig) (*sidecar, error) {
+func NewHelper(config *Config) (*Sidecar, error) {
 	timeout, err := getTimeout(config)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sidecar{
+	return &Sidecar{
 		config:            config,
 		workloadAPIClient: newWorkloadAPIClient(config.AgentAddress, timeout),
+		certReadyChan:     make(chan struct{}, 1),
 	}, nil
 }
 
@@ -59,7 +77,7 @@ func NewSidecar(config *SidecarConfig) (*sidecar, error) {
 // Starts the workload API client to listen for new SVID updates
 // When a new SVID is received on the updateChan, the SVID certificates
 // are stored in disk and a restart signal is sent to the proxy's process
-func (s *sidecar) RunDaemon(ctx context.Context) error {
+func (s *Sidecar) RunDaemon(ctx context.Context) error {
 	// Create channel for interrupt signal
 	interrupt := make(chan os.Signal, 1)
 	errorChan := make(chan error, 1)
@@ -108,7 +126,7 @@ func (s *sidecar) RunDaemon(ctx context.Context) error {
 }
 
 // Updates the certificates stored in disk and signal the Process to restart
-func updateCertificates(s *sidecar, svidResponse *proto.X509SVIDResponse) {
+func updateCertificates(s *Sidecar, svidResponse *proto.X509SVIDResponse) {
 	log.Println("Updating certificates")
 
 	err := s.dumpBundles(svidResponse)
@@ -120,6 +138,14 @@ func updateCertificates(s *sidecar, svidResponse *proto.X509SVIDResponse) {
 	if err != nil {
 		log.Println(err.Error())
 	}
+
+	select {
+	case s.certReadyChan <- struct{}{}:
+	default:
+	}
+}
+func (s *Sidecar) CertReadyChan() <-chan struct{} {
+	return s.certReadyChan
 }
 
 //newWorkloadAPIClient creates a workload.X509Client
@@ -137,22 +163,40 @@ func newWorkloadAPIClient(agentAddress string, timeout time.Duration) workload.X
 
 //signalProcess sends the configured Renew signal to the process running the proxy
 //to reload itself so that the proxy uses the new SVID
-func (s *sidecar) signalProcess() (err error) {
+func (s *Sidecar) signalProcess() (err error) {
 	if atomic.LoadInt32(&s.processRunning) == 0 {
-		cmd := exec.Command(s.config.Cmd, strings.Split(s.config.CmdArgs, " ")...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Start()
-		if err != nil {
-			return fmt.Errorf("error executing process: %v\n%v", s.config.Cmd, err)
+		if s.config.PidFile != "" {
+			var pid int
+			file, err := os.Open(s.config.PidFile)
+			if err != nil {
+				return fmt.Errorf("error opening pid file: %v\n%v", s.config.PidFile, err)
+			}
+			defer file.Close()
+
+			fmt.Fscanf(file, "%d", &pid)
+			s.process, err = os.FindProcess(pid)
+			if err != nil {
+				return fmt.Errorf("error finding process id: %v\n%v", pid, err)
+			}
+
+			atomic.StoreInt32(&s.processRunning, 1)
+
+		} else {
+			cmd := exec.Command(s.config.Cmd, strings.Split(s.config.CmdArgs, " ")...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Start()
+			if err != nil {
+				return fmt.Errorf("error executing process: %v\n%v", s.config.Cmd, err)
+			}
+			s.process = cmd.Process
+			go s.checkProcessExit()
 		}
-		s.process = cmd.Process
-		go s.checkProcessExit()
 	} else {
 		// Signal to reload certs
-		sig, err := getSignal(s.config.RenewSignal)
-		if err != nil {
-			return fmt.Errorf("error getting signal: %v\n%v", s.config.RenewSignal, err)
+		sig := unix.SignalNum(s.config.RenewSignal)
+		if sig == 0 {
+			return fmt.Errorf("error getting signal: %v", s.config.RenewSignal)
 		}
 
 		err = s.process.Signal(sig)
@@ -164,7 +208,7 @@ func (s *sidecar) signalProcess() (err error) {
 	return nil
 }
 
-func (s *sidecar) checkProcessExit() {
+func (s *Sidecar) checkProcessExit() {
 	atomic.StoreInt32(&s.processRunning, 1)
 	s.process.Wait()
 	atomic.StoreInt32(&s.processRunning, 0)
@@ -173,7 +217,7 @@ func (s *sidecar) checkProcessExit() {
 //dumpBundles takes a X509SVIDResponse, representing a svid message from
 //the Workload API, and calls writeCerts and writeKey to write to disk
 //the svid, key and bundle of certificates
-func (s *sidecar) dumpBundles(svidResponse *proto.X509SVIDResponse) error {
+func (s *Sidecar) dumpBundles(svidResponse *proto.X509SVIDResponse) error {
 
 	// There may be more than one certificate, but we are interested in the first one only
 	svid := svidResponse.Svids[0]
@@ -202,7 +246,7 @@ func (s *sidecar) dumpBundles(svidResponse *proto.X509SVIDResponse) error {
 
 // writeCerts takes a slice of bytes, which may contain multiple certificates,
 // and encodes them as PEM blocks, writing them to file
-func (s *sidecar) writeCerts(file string, data []byte) error {
+func (s *Sidecar) writeCerts(file string, data []byte) error {
 	certs, err := x509.ParseCertificates(data)
 	if err != nil {
 		return err
@@ -222,7 +266,7 @@ func (s *sidecar) writeCerts(file string, data []byte) error {
 
 // writeKey takes a private key as a slice of bytes,
 // formats as PEM, and writes it to file
-func (s *sidecar) writeKey(file string, data []byte) error {
+func (s *Sidecar) writeKey(file string, data []byte) error {
 	b := &pem.Block{
 		Type:  "EC PRIVATE KEY",
 		Bytes: data,
@@ -235,7 +279,7 @@ func (s *sidecar) writeKey(file string, data []byte) error {
 // if there's an error during parsing, maybe because
 // it's not well defined or not defined at all in the
 // config, returns the defaultTimeout constant
-func getTimeout(config *SidecarConfig) (time.Duration, error) {
+func getTimeout(config *Config) (time.Duration, error) {
 	if config.Timeout == "" {
 		return defaultTimeout, nil
 	}
@@ -245,71 +289,4 @@ func getTimeout(config *SidecarConfig) (time.Duration, error) {
 		return 0, err
 	}
 	return t, nil
-}
-
-func getSignal(s string) (sig syscall.Signal, err error) {
-	switch s {
-	case "SIGABRT":
-		sig = syscall.SIGABRT
-	case "SIGALRM":
-		sig = syscall.SIGALRM
-	case "SIGBUS":
-		sig = syscall.SIGBUS
-	case "SIGCHLD":
-		sig = syscall.SIGCHLD
-	case "SIGCONT":
-		sig = syscall.SIGCONT
-	case "SIGFPE":
-		sig = syscall.SIGFPE
-	case "SIGHUP":
-		sig = syscall.SIGHUP
-	case "SIGILL":
-		sig = syscall.SIGILL
-	case "SIGIO":
-		sig = syscall.SIGIO
-	case "SIGIOT":
-		sig = syscall.SIGIOT
-	case "SIGKILL":
-		sig = syscall.SIGKILL
-	case "SIGPIPE":
-		sig = syscall.SIGPIPE
-	case "SIGPROF":
-		sig = syscall.SIGPROF
-	case "SIGQUIT":
-		sig = syscall.SIGQUIT
-	case "SIGSEGV":
-		sig = syscall.SIGSEGV
-	case "SIGSTOP":
-		sig = syscall.SIGSTOP
-	case "SIGSYS":
-		sig = syscall.SIGSYS
-	case "SIGTERM":
-		sig = syscall.SIGTERM
-	case "SIGTRAP":
-		sig = syscall.SIGTRAP
-	case "SIGTSTP":
-		sig = syscall.SIGTSTP
-	case "SIGTTIN":
-		sig = syscall.SIGTTIN
-	case "SIGTTOU":
-		sig = syscall.SIGTTOU
-	case "SIGURG":
-		sig = syscall.SIGURG
-	case "SIGUSR1":
-		sig = syscall.SIGUSR1
-	case "SIGUSR2":
-		sig = syscall.SIGUSR2
-	case "SIGVTALRM":
-		sig = syscall.SIGVTALRM
-	case "SIGWINCH":
-		sig = syscall.SIGWINCH
-	case "SIGXCPU":
-		sig = syscall.SIGXCPU
-	case "SIGXFSZ":
-		sig = syscall.SIGXFSZ
-	default:
-		err = fmt.Errorf("unrecognized signal: %v", s)
-	}
-
-	return sig, err
 }
