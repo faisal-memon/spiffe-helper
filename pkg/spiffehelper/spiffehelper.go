@@ -166,23 +166,7 @@ func newWorkloadAPIClient(agentAddress string, timeout time.Duration) workload.X
 //to reload itself so that the proxy uses the new SVID
 func (s *Sidecar) signalProcess() (err error) {
 	if atomic.LoadInt32(&s.processRunning) == 0 {
-		if s.config.PidFile != "" {
-			var pid int
-			file, err := os.Open(s.config.PidFile)
-			if err != nil {
-				return fmt.Errorf("error opening pid file: %v\n%v", s.config.PidFile, err)
-			}
-			defer file.Close()
-
-			fmt.Fscanf(file, "%d", &pid)
-			s.process, err = os.FindProcess(pid)
-			if err != nil {
-				return fmt.Errorf("error finding process id: %v\n%v", pid, err)
-			}
-
-			atomic.StoreInt32(&s.processRunning, 1)
-
-		} else {
+		if s.config.Cmd != "" {
 			cmd := exec.Command(s.config.Cmd, strings.Split(s.config.CmdArgs, " ")...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -213,6 +197,25 @@ func (s *Sidecar) checkProcessExit() {
 	atomic.StoreInt32(&s.processRunning, 1)
 	s.process.Wait()
 	atomic.StoreInt32(&s.processRunning, 0)
+}
+
+func (s *Sidecar) ProcessStarted() error {
+	var pid int
+
+	file, err := os.Open(s.config.PidFile)
+	if err != nil {
+		return fmt.Errorf("error opening pid file: %v\n%v", s.config.PidFile, err)
+	}
+	defer file.Close()
+
+	fmt.Fscanf(file, "%d", &pid)
+	s.process, err = os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("error finding process id: %v\n%v", pid, err)
+	}
+
+	atomic.StoreInt32(&s.processRunning, 1)
+	return nil
 }
 
 //dumpBundles takes a X509SVIDResponse, representing a svid message from
