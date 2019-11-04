@@ -4,24 +4,22 @@ import (
 	"io/ioutil"
 
 	"github.com/hashicorp/hcl"
+	"github.com/faisal-memon/spiffe-helper/pkg/spiffehelper"
 )
 
-// SidecarConfig is HCL config data
-type SidecarConfig struct {
-	AgentAddress       string `hcl:"agentAddress"`
-	Cmd                string `hcl:"cmd"`
-	CmdArgs            string `hcl:"cmdArgs"`
-	CertDir            string `hcl:"certDir"`
-	SvidFileName       string `hcl:"svidFileName"`
-	SvidKeyFileName    string `hcl:"svidKeyFileName"`
-	SvidBundleFileName string `hcl:"svidBundleFileName"`
-	RenewSignal        string `hcl:"renewSignal"`
-	Timeout            string `hcl:"timeout"`
-}
-
 // ParseConfig parses the given HCL file into a SidecarConfig struct
-func ParseConfig(file string) (sidecarConfig *SidecarConfig, err error) {
-	sidecarConfig = &SidecarConfig{}
+func ParseConfig(file string) (helperConfig *spiffehelper.Config, err error) {
+	helperConfig = &spiffehelper.Config{
+				AgentAddress:       `hcl:"agentAddress"`,
+				Cmd:                `hcl:"cmd"`,
+				CmdArgs:            `hcl:"cmdArgs"`,
+				CertDir:            `hcl:"certDir"`,
+				SvidFileName:       `hcl:"svidFileName"`,
+				SvidKeyFileName:    `hcl:"svidKeyFileName"`,
+				SvidBundleFileName: `hcl:"svidBundleFileName"`,
+				RenewSignal:        `hcl:"renewSignal"`,
+				Timeout:            `hcl:"timeout"`,
+			}
 
 	// Read HCL file
 	dat, err := ioutil.ReadFile(file)
@@ -37,9 +35,9 @@ func ParseConfig(file string) (sidecarConfig *SidecarConfig, err error) {
 		return nil, err
 	}
 
-	if err := hcl.DecodeObject(&sidecarConfig, hclParseTree); err != nil {
+	if err := hcl.DecodeObject(&helperConfig, hclParseTree); err != nil {
 		return nil, err
 	}
 
-	return sidecarConfig, nil
+	return helperConfig, nil
 }

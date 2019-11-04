@@ -3,7 +3,7 @@ export GO111MODULE=on
 .PHONY: all build test clean distclean
 
 build:
-	go build
+	go build -o spiffe-helper cmd/spiffe-helper/*.go
 
 all: build test
 
