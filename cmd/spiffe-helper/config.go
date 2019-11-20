@@ -4,12 +4,12 @@ import (
 	"io/ioutil"
 
 	"github.com/hashicorp/hcl"
-	"github.com/faisal-memon/spiffe-helper/pkg/spiffehelper"
+	"github.com/faisal-memon/spiffe-helper/pkg/helper"
 )
 
 // ParseConfig parses the given HCL file into a SidecarConfig struct
-func ParseConfig(file string) (helperConfig *spiffehelper.Config, err error) {
-	helperConfig = &spiffehelper.Config{
+func ParseConfig(file string) (helperConfig *spiffe.HelperConfig, err error) {
+	helperConfig = &spiffe.HelperConfig{
 				AgentAddress:       `hcl:"agentAddress"`,
 				Cmd:                `hcl:"cmd"`,
 				CmdArgs:            `hcl:"cmdArgs"`,

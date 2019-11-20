@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"github.com/faisal-memon/spiffe-helper/pkg/spiffehelper"
+	"github.com/faisal-memon/spiffe-helper/pkg/helper"
 )
 
 func main() {
@@ -28,7 +28,7 @@ func main() {
 
 	log.Printf("Using configuration file: %q\n", *configFile)
 
-	helper, err := spiffehelper.NewHelper(config)
+	helper, err := spiffe.NewHelper(config)
 	if err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package spiffehelper
+package spiffe
 
 import (
 	"context"
@@ -23,8 +23,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Config contains config variables when creating a SPIFFE Helper.
-type Config struct {
+// HelperConfig contains config variables when creating a SPIFFE Helper.
+type HelperConfig struct {
 	AgentAddress       string
 	Cmd                string
 	CmdArgs            string
@@ -41,7 +41,7 @@ type Config struct {
 // Helper is the component that consumes the Workload API and renews certs
 // implements the interface Helper
 type Helper struct {
-	config            *Config
+	config            *HelperConfig
 	processRunning    int32
 	process           *os.Process
 	workloadAPIClient workload.X509Client
@@ -60,7 +60,7 @@ const (
 )
 
 // NewHelper creates a new SPIFFE helper
-func NewHelper(config *Config) (*Helper, error) {
+func NewHelper(config *HelperConfig) (*Helper, error) {
 	timeout, err := getTimeout(config)
 	if err != nil {
 		return nil, err
@@ -281,11 +281,11 @@ func (h *Helper) writeKey(file string, data []byte) error {
 	return ioutil.WriteFile(file, pem.EncodeToMemory(b), keyFileMode)
 }
 
-// parses a time.Duration from the the SidecarConfig,
+// parses a time.Duration from the the HelperConfig,
 // if there's an error during parsing, maybe because
 // it's not well defined or not defined at all in the
 // config, returns the defaultTimeout constant
-func getTimeout(config *Config) (time.Duration, error) {
+func getTimeout(config *HelperConfig) (time.Duration, error) {
 	if config.Timeout == "" {
 		return defaultTimeout, nil
 	}
