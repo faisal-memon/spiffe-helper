@@ -205,6 +205,8 @@ github.com/spiffe/go-spiffe v0.0.0-20170907221946-2bb3101d62b4/go.mod h1:q0X9/v7
 github.com/spiffe/go-spiffe v0.0.0-20190717182101-d8657cb50cae/go.mod h1:HyNeJnVYkDyQgB2qcSPxVYkAA2F3lQu51bDxNpFcKxY=
 github.com/spiffe/go-spiffe v0.0.0-20190922191205-018e7197ed1c h1:wpwh25WjvKF8/+N+wMy1u9nMiOXfw5sqpmL5ZSAFIWU=
 github.com/spiffe/go-spiffe v0.0.0-20190922191205-018e7197ed1c/go.mod h1:HyNeJnVYkDyQgB2qcSPxVYkAA2F3lQu51bDxNpFcKxY=
+github.com/spiffe/spiffe-helper v0.0.0-20191008190511-e11122b96bb9 h1:4Ze5T6YLet2KlPoGXCS0yshA/zv/EkJmirbKUL1PQ08=
+github.com/spiffe/spiffe-helper v0.0.0-20191008190511-e11122b96bb9/go.mod h1:QuuKFhRg3M1rBIhJUennLcfHdzj16fDfuhw99DBlJk8=
 github.com/spiffe/spire v0.0.0-20180718214544-375954d0e061 h1:ZPKJOuJQhLKD9Bk+ZHikofz4Jh4hxqwXXxULZ08+KIQ=
 github.com/spiffe/spire v0.0.0-20180718214544-375954d0e061/go.mod h1:lfKhlaeZKdcQDIyXIAw/9VU8gtl2qmWtHC8e0RxJM6c=
 github.com/spiffe/spire v0.0.0-20191007205405-52bcf313f4f6 h1:2lLO9rR2rXlfWjeOC5YR5sHMyw5LGwF/mFJpmiZJdK4=

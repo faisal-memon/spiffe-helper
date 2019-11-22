@@ -11,7 +11,7 @@ vendor:
 	go mod vendor
 
 test:
-	go test
+	go test ./...
 
 clean:
 	go clean
