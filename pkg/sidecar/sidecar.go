@@ -2,13 +2,13 @@ package sidecar
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"path"
@@ -16,9 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/andres-erbsen/clock"
-	proto "github.com/spiffe/go-spiffe/proto/spiffe/workload"
-	"github.com/spiffe/spire/api/workload"
+	"github.com/spiffe/go-spiffe/workload"
 	"golang.org/x/sys/unix"
 )
 
@@ -46,7 +44,7 @@ type Sidecar struct {
 	config            *Config
 	processRunning    int32
 	process           *os.Process
-	workloadAPIClient workload.X509Client
+	workloadAPIClient *workload.X509SVIDClient
 	certReadyChan     chan struct{}
 }
 
@@ -61,18 +59,22 @@ const (
 	keyFileMode   = os.FileMode(0600)
 )
 
+var sidecar *Sidecar
+
 // NewSidecar creates a new SPIFFE sidecar
 func NewSidecar(config *Config) (*Sidecar, error) {
-	timeout, err := getTimeout(config)
+	workloadAPIClient, err := workload.NewX509SVIDClient(watcher{}, workload.WithAddr("unix://"+config.AgentAddress))
 	if err != nil {
 		return nil, err
 	}
 
-	return &Sidecar{
+	sidecar = &Sidecar{
 		config:            config,
-		workloadAPIClient: newWorkloadAPIClient(config.AgentAddress, timeout),
 		certReadyChan:     make(chan struct{}, 1),
-	}, nil
+		workloadAPIClient: workloadAPIClient,
+	}
+
+	return sidecar, nil
 }
 
 // RunDaemon starts the main loop
@@ -80,51 +82,35 @@ func NewSidecar(config *Config) (*Sidecar, error) {
 // When a new SVID is received on the updateChan, the SVID certificates
 // are stored in disk and a restart signal is sent to the proxy's process
 func (s *Sidecar) RunDaemon(ctx context.Context) error {
-	// Create channel for interrupt signal
-	errorChan := make(chan error, 1)
-
-	updateChan := s.workloadAPIClient.UpdateChan()
-
-	// start the workloadAPIClient
-	go func() {
-		clk := clock.New()
-		delay := delayMin
-		for {
-			err := s.workloadAPIClient.Start()
-			if err != nil {
-				log.Printf("failed: %v; retrying in %s", err, delay)
-				timer := clk.Timer(delay)
-				select {
-				case <-timer.C:
-				case <-ctx.Done():
-					timer.Stop()
-					errorChan <- ctx.Err()
-					return
-				}
-
-				delay = time.Duration(float64(delay) * 1.5)
-				if delay > delayMax {
-					delay = delayMax
-				}
-			}
-		}
-	}()
-	defer s.workloadAPIClient.Stop()
-
-	for {
-		select {
-		case svidResponse := <-updateChan:
-			updateCertificates(s, svidResponse)
-		case err := <-errorChan:
-			return err
-		case <-ctx.Done():
-			return nil
-		}
+	err := s.workloadAPIClient.Start()
+	if err != nil {
+		return err
 	}
+	// s.workloadAPIClient.Stop()
+
+	return nil
 }
 
+// watcher is a sample implementation of the workload.X509SVIDWatcher interface
+type watcher struct{}
+
+// UpdateX509SVIDs is run every time an SVID is updated
+func (watcher) UpdateX509SVIDs(svids *workload.X509SVIDs) {
+	for _, svid := range svids.SVIDs {
+		log.Printf("SVID updated for spiffeID: %q", svid.SPIFFEID)
+	}
+
+	updateCertificates(sidecar, svids)
+}
+
+// OnError is run when the client runs into an error
+func (watcher) OnError(err error) {
+	log.Printf("X509SVIDClient error: %v", err)
+}
+
+
 // Updates the certificates stored in disk and signal the Process to restart
-func updateCertificates(s *Sidecar, svidResponse *proto.X509SVIDResponse) {
+func updateCertificates(s *Sidecar, svidResponse *workload.X509SVIDs) {
 	log.Println("Updating certificates")
 
 	err := s.dumpBundles(svidResponse)
@@ -146,19 +132,6 @@ func updateCertificates(s *Sidecar, svidResponse *proto.X509SVIDResponse) {
 // CertReadyChan returns a channel to know when the certificates are ready
 func (s *Sidecar) CertReadyChan() <-chan struct{} {
 	return s.certReadyChan
-}
-
-// newWorkloadAPIClient creates a workload.X509Client
-func newWorkloadAPIClient(agentAddress string, timeout time.Duration) workload.X509Client {
-	addr := &net.UnixAddr{
-		Net:  "unix",
-		Name: agentAddress,
-	}
-	config := &workload.X509ClientConfig{
-		Addr:    addr,
-		Timeout: timeout,
-	}
-	return workload.NewX509Client(config)
 }
 
 // signalProcess sends the configured Renew signal to the process running the proxy
@@ -235,23 +208,18 @@ func (s *Sidecar) checkProcessExit() {
 // the Workload API, and calls writeCerts and writeKey to write to disk
 // the svid, key and bundle of certificates.
 // It is possible to change output setting `addIntermediatesToBundle` as true.
-func (s *Sidecar) dumpBundles(svidResponse *proto.X509SVIDResponse) error {
+func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 	// There may be more than one certificate, but we are interested in the first one only
-	svid := svidResponse.Svids[0]
+	svid := svidResponse.SVIDs[0]
 
 	svidFile := path.Join(s.config.CertDir, s.config.SvidFileName)
 	svidKeyFile := path.Join(s.config.CertDir, s.config.SvidKeyFileName)
 	svidBundleFile := path.Join(s.config.CertDir, s.config.SvidBundleFileName)
 
-	certs, err := x509.ParseCertificates(svid.X509Svid)
-	if err != nil {
-		return err
-	}
-
-	bundles, err := x509.ParseCertificates(svid.Bundle)
-	if err != nil {
-		return err
-	}
+	certs := svid.Certificates
+	bundles := svid.TrustBundle
+	privateKey := svid.PrivateKey.(crypto.PrivateKey)
+	privateKeyBytes, _ := x509.MarshalPKCS8PrivateKey(privateKey)
 
 	// Add intermediates into bundles, and remove them from certs
 	if s.config.AddIntermediatesToBundle {
@@ -263,7 +231,7 @@ func (s *Sidecar) dumpBundles(svidResponse *proto.X509SVIDResponse) error {
 		return err
 	}
 
-	if err := s.writeKey(svidKeyFile, svid.X509SvidKey); err != nil {
+	if err := s.writeKey(svidKeyFile, privateKeyBytes); err != nil {
 		return err
 	}
 
