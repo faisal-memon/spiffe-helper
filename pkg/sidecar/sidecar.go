@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +37,7 @@ type Config struct {
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
 	ReloadExternalProcess    func() error
+	ReloadExternalLock       *sync.Mutex
 }
 
 // Sidecar is the component that consumes the Workload API and renews certs
@@ -227,6 +229,9 @@ func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 		certs = []*x509.Certificate{certs[0]}
 	}
 
+	if s.config.ReloadExternalLock != nil {
+		s.config.ReloadExternalLock.Lock()
+	}
 	if err := s.writeCerts(svidFile, certs); err != nil {
 		return err
 	}
@@ -237,6 +242,9 @@ func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 
 	if err := s.writeCerts(svidBundleFile, bundles); err != nil {
 		return err
+	}
+	if s.config.ReloadExternalLock != nil {
+		s.config.ReloadExternalLock.Unlock()
 	}
 
 	return nil
