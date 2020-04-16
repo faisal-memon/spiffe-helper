@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,7 +36,6 @@ type Config struct {
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
 	ReloadExternalProcess    func() error
-	ReloadExternalLock       *sync.Mutex
 }
 
 // Sidecar is the component that consumes the Workload API and renews certs
@@ -61,23 +59,23 @@ const (
 	keyFileMode   = os.FileMode(0600)
 )
 
-var sidecar *Sidecar
-
 // NewSidecar creates a new SPIFFE sidecar
 func NewSidecar(config *Config) (*Sidecar, error) {
-	workloadAPIClient, err := workload.NewX509SVIDClient(watcher{}, workload.WithAddr("unix://"+config.AgentAddress))
+	sidecar := &Sidecar{
+		config:            config,
+		certReadyChan:     make(chan struct{}),
+	}
+
+	w := watcher{sidecar: sidecar}
+	workloadAPIClient, err := workload.NewX509SVIDClient(w, workload.WithAddr("unix://"+config.AgentAddress))
 	if err != nil {
 		return nil, err
 	}
-
-	sidecar = &Sidecar{
-		config:            config,
-		certReadyChan:     make(chan struct{}, 1),
-		workloadAPIClient: workloadAPIClient,
-	}
+	sidecar.workloadAPIClient = workloadAPIClient
 
 	return sidecar, nil
 }
+
 
 // RunDaemon starts the main loop
 // Starts the workload API client to listen for new SVID updates
@@ -88,21 +86,32 @@ func (s *Sidecar) RunDaemon(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// s.workloadAPIClient.Stop()
+
+	return nil
+}
+
+// StopDaemon starts the main loop
+func (s *Sidecar) StopDaemon(ctx context.Context) error {
+	err := s.workloadAPIClient.Stop()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // watcher is a sample implementation of the workload.X509SVIDWatcher interface
-type watcher struct{}
+type watcher struct{
+	sidecar *Sidecar
+}
 
 // UpdateX509SVIDs is run every time an SVID is updated
-func (watcher) UpdateX509SVIDs(svids *workload.X509SVIDs) {
+func (w watcher) UpdateX509SVIDs(svids *workload.X509SVIDs) {
 	for _, svid := range svids.SVIDs {
 		log.Printf("SVID updated for spiffeID: %q", svid.SPIFFEID)
 	}
 
-	updateCertificates(sidecar, svids)
+	updateCertificates(w.sidecar, svids)
 }
 
 // OnError is run when the client runs into an error
@@ -229,9 +238,6 @@ func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 		certs = []*x509.Certificate{certs[0]}
 	}
 
-	if s.config.ReloadExternalLock != nil {
-		s.config.ReloadExternalLock.Lock()
-	}
 	if err := s.writeCerts(svidFile, certs); err != nil {
 		return err
 	}
@@ -243,9 +249,6 @@ func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 	if err := s.writeCerts(svidBundleFile, bundles); err != nil {
 		return err
 	}
-	if s.config.ReloadExternalLock != nil {
-		s.config.ReloadExternalLock.Unlock()
-	}
 
 	return nil
 }
@@ -253,7 +256,7 @@ func (s *Sidecar) dumpBundles(svidResponse *workload.X509SVIDs) error {
 // writeCerts takes an array of certificates,
 // and encodes them as PEM blocks, writing them to file
 func (s *Sidecar) writeCerts(file string, certs []*x509.Certificate) error {
-	var pemData []byte
+	pemData := make([]byte, 0, len(certs))
 	for _, cert := range certs {
 		b := &pem.Block{
 			Type:  "CERTIFICATE",
