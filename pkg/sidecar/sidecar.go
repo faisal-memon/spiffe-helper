@@ -35,7 +35,6 @@ type Config struct {
 	SvidBundleFileName       string `hcl:"svidBundleFileName"`
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
-	ReloadExternalProcess    func() error
 }
 
 // Sidecar is the component that consumes the Workload API and renews certs
@@ -46,6 +45,7 @@ type Sidecar struct {
 	process           *os.Process
 	workloadAPIClient *workload.X509SVIDClient
 	certReadyChan     chan struct{}
+	ErrChan         chan error
 }
 
 const (
@@ -62,8 +62,9 @@ const (
 // NewSidecar creates a new SPIFFE sidecar
 func NewSidecar(config *Config) (*Sidecar, error) {
 	sidecar := &Sidecar{
-		config:            config,
-		certReadyChan:     make(chan struct{}),
+		config:        config,
+		certReadyChan: make(chan struct{}),
+		ErrChan:     make(chan error),
 	}
 
 	w := watcher{sidecar: sidecar}
@@ -115,8 +116,8 @@ func (w watcher) UpdateX509SVIDs(svids *workload.X509SVIDs) {
 }
 
 // OnError is run when the client runs into an error
-func (watcher) OnError(err error) {
-	log.Printf("X509SVIDClient error: %v", err)
+func (w watcher) OnError(err error) {
+	w.sidecar.ErrChan <- err
 }
 
 
@@ -129,9 +130,11 @@ func updateCertificates(s *Sidecar, svidResponse *workload.X509SVIDs) {
 		log.Printf("unable to dump bundle: %v", err)
 		return
 	}
-	err = s.signalProcess()
-	if err != nil {
-		log.Printf("unable to signal process: %v", err)
+	if s.config.Cmd != "" {
+		err = s.signalProcess()
+		if err != nil {
+			log.Printf("unable to signal process: %v", err)
+		}
 	}
 
 	select {
@@ -148,42 +151,34 @@ func (s *Sidecar) CertReadyChan() <-chan struct{} {
 // signalProcess sends the configured Renew signal to the process running the proxy
 // to reload itself so that the proxy uses the new SVID
 func (s *Sidecar) signalProcess() (err error) {
-	switch s.config.ReloadExternalProcess {
-	case nil:
-		if atomic.LoadInt32(&s.processRunning) == 0 {
-			cmdArgs, err := getCmdArgs(s.config.CmdArgs)
-			if err != nil {
-				return fmt.Errorf("error parsing cmd arguments: %v", err)
-			}
-
-			cmd := exec.Command(s.config.Cmd, cmdArgs...) // #nosec
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err = cmd.Start()
-			if err != nil {
-				return fmt.Errorf("error executing process: %v\n%v", s.config.Cmd, err)
-			}
-			s.process = cmd.Process
-			go s.checkProcessExit()
-		} else {
-			// Signal to reload certs
-			sig := unix.SignalNum(s.config.RenewSignal)
-			if sig == 0 {
-				return fmt.Errorf("error getting signal: %v", s.config.RenewSignal)
-			}
-
-			err = s.process.Signal(sig)
-			if err != nil {
-				return fmt.Errorf("error signaling process with signal: %v\n%v", sig, err)
-			}
+	if atomic.LoadInt32(&s.processRunning) == 0 {
+		cmdArgs, err := getCmdArgs(s.config.CmdArgs)
+		if err != nil {
+			return fmt.Errorf("error parsing cmd arguments: %v", err)
 		}
 
-	default:
-		err = s.config.ReloadExternalProcess()
+		cmd := exec.Command(s.config.Cmd, cmdArgs...) // #nosec
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Start()
 		if err != nil {
-			return fmt.Errorf("error reloading external process: %v", err)
+			return fmt.Errorf("error executing process: %v\n%v", s.config.Cmd, err)
+		}
+		s.process = cmd.Process
+		go s.checkProcessExit()
+	} else {
+		// Signal to reload certs
+		sig := unix.SignalNum(s.config.RenewSignal)
+		if sig == 0 {
+			return fmt.Errorf("error getting signal: %v", s.config.RenewSignal)
+		}
+
+		err = s.process.Signal(sig)
+		if err != nil {
+			return fmt.Errorf("error signaling process with signal: %v\n%v", sig, err)
 		}
 	}
+
 
 	return nil
 }

@@ -38,4 +38,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	select {
+	case err = <- spiffeSidecar.ErrChan:
+		panic(err)
+	}
 }
