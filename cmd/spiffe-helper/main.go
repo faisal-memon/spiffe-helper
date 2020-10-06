@@ -38,9 +38,10 @@ func main() {
 
 	log.Infof("Using configuration file: %q\n", *configFile)
 
-	spiffeSidecar := sidecar.NewSidecar(config)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	err = spiffeSidecar.RunDaemon(ctx)
+	config.Ctx = ctx
+	spiffeSidecar := sidecar.NewSidecar(config)
+	err = spiffeSidecar.RunDaemon()
 	if err != nil {
 		panic(err)
 	}

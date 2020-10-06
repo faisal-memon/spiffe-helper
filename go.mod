@@ -3,16 +3,58 @@ module github.com/spiffe/spiffe-helper
 go 1.13
 
 require (
-	github.com/google/go-cmp v0.3.0 // indirect
 	github.com/hashicorp/hcl v1.0.0
-	github.com/kr/pretty v0.1.0 // indirect
 	github.com/spiffe/go-spiffe v1.1.0
 	github.com/spiffe/go-spiffe/v2 v2.0.0-beta.1
 	github.com/stretchr/testify v1.5.1
-	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
-	golang.org/x/net v0.0.0-20190613194153-d28f0bde5980 // indirect
-	golang.org/x/sys v0.0.0-20190618155005-516e3c20635f
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/sys v0.0.0-20200622214017-ed371f2e16b4
 	google.golang.org/grpc v1.27.1
-	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+	k8s.io/kubernetes v1.18.2
+	sigs.k8s.io/controller-runtime v0.6.0
 )
+
+replace k8s.io/api => k8s.io/api v0.18.2
+
+replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.2
+
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.18.3-beta.0
+
+replace k8s.io/apiserver => k8s.io/apiserver v0.18.2
+
+replace k8s.io/cli-runtime => k8s.io/cli-runtime v0.18.2
+
+replace k8s.io/client-go => k8s.io/client-go v0.18.2
+
+replace k8s.io/cloud-provider => k8s.io/cloud-provider v0.18.2
+
+replace k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.18.2
+
+replace k8s.io/code-generator => k8s.io/code-generator v0.18.3-beta.0
+
+replace k8s.io/component-base => k8s.io/component-base v0.18.2
+
+replace k8s.io/cri-api => k8s.io/cri-api v0.18.10-rc.0
+
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.18.2
+
+replace k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.18.2
+
+replace k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.18.2
+
+replace k8s.io/kube-proxy => k8s.io/kube-proxy v0.18.2
+
+replace k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.18.2
+
+replace k8s.io/kubectl => k8s.io/kubectl v0.18.2
+
+replace k8s.io/kubelet => k8s.io/kubelet v0.18.2
+
+replace k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.18.2
+
+replace k8s.io/metrics => k8s.io/metrics v0.18.2
+
+replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.2
+
+replace k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.2
+
+replace k8s.io/sample-controller => k8s.io/sample-controller v0.18.2

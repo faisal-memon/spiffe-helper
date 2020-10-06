@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
@@ -20,23 +21,29 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	admv1 "k8s.io/kubernetes/pkg/apis/admissionregistration"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Config contains config variables when creating a SPIFFE Sidecar.
 type Config struct {
-	AgentAddress string `hcl:"agentAddress"`
-	Cmd          string `hcl:"cmd"`
-	CmdArgs      string `hcl:"cmdArgs"`
-	CertDir      string `hcl:"certDir"`
 	// Merge intermediate certificates into Bundle file instead of SVID file,
 	// it is useful is some scenarios like MySQL,
 	// where this is the expected format for presented certificates and bundles
 	AddIntermediatesToBundle bool   `hcl:"addIntermediatesToBundle"`
+	AgentAddress             string `hcl:"agentAddress"`
+	Cmd                      string `hcl:"cmd"`
+	CmdArgs                  string `hcl:"cmdArgs"`
+	CertDir                  string `hcl:"certDir"`
+	MutatingWebhookName      string `hcl:"mutatingWebhookName"`
 	SvidFileName             string `hcl:"svidFileName"`
 	SvidKeyFileName          string `hcl:"svidKeyFileName"`
 	SvidBundleFileName       string `hcl:"svidBundleFileName"`
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
+	ValidatingWebhookName    string `hcl:"validatingWebhookName"`
+	Client                   client.Client
+	Ctx                      context.Context
 	ReloadExternalProcess    func() error
 	Log                      logger.Logger
 }
@@ -76,15 +83,15 @@ func NewSidecar(config *Config) *Sidecar {
 // Starts the workload API client to listen for new SVID updates
 // When a new SVID is received on the updateChan, the SVID certificates
 // are stored in disk and a restart signal is sent to the proxy's process
-func (s *Sidecar) RunDaemon(ctx context.Context) error {
-	client, err := workloadapi.New(ctx, workloadapi.WithAddr("unix://"+s.config.AgentAddress),
+func (s *Sidecar) RunDaemon() error {
+	client, err := workloadapi.New(s.config.Ctx, workloadapi.WithAddr("unix://"+s.config.AgentAddress),
 		workloadapi.WithLogger(s.config.Log))
 	if err != nil {
 		return fmt.Errorf("unable to create new workloadapi client: %v", err)
 	}
 	go func() {
 		defer client.Close()
-		err := client.WatchX509Context(ctx, &x509Watcher{s})
+		err := client.WatchX509Context(s.config.Ctx, &x509Watcher{s})
 		if err != nil && status.Code(err) != codes.Canceled {
 			s.config.Log.Errorf("Error watching X.509 context: %v", err)
 		}
@@ -123,6 +130,7 @@ func updateCertificates(s *Sidecar, svidResponse *workloadapi.X509Context) {
 		s.config.Log.Errorf("unable to dump bundle: %v", err)
 		return
 	}
+
 	err = s.signalProcess()
 	if err != nil {
 		s.config.Log.Errorf("unable to signal process: %v", err)
@@ -245,11 +253,44 @@ func (s *Sidecar) dumpBundles(svidResponse *workloadapi.X509Context) error {
 		return err
 	}
 
-	if err := s.writeCerts(svidBundleFile, bundles); err != nil {
+	if err := s.writeBundle(svidBundleFile, bundles); err != nil {
 		return err
 	}
 
+
 	return nil
+}
+// writeBundle takes an array of certificates,
+// and encodes them as PEM blocks, writing them to file
+func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
+	pemData := make([]byte, 0, len(certs))
+	for _, cert := range certs {
+		b := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		}
+		pemData = append(pemData, pem.EncodeToMemory(b)...)
+	}
+
+	// Rotate cabundle field of ValidatingWebhookConfiguration
+	if s.config.ValidatingWebhookName != "" {
+		validatingWebhookConfiguration := &admv1.ValidatingWebhookConfiguration{}
+		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
+		    Name:      s.config.ValidatingWebhookName,
+		}, validatingWebhookConfiguration)
+		if err != nil {
+			return err
+		}
+		for _, validatingWebhook := range validatingWebhookConfiguration.Webhooks {
+			base64.StdEncoding.Encode(validatingWebhook.ClientConfig.CABundle, pemData)
+		}
+		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
+		if err != nil {
+			return err
+		}
+	}
+
+	return ioutil.WriteFile(file, pemData, certsFileMode)
 }
 
 // writeCerts takes an array of certificates,
