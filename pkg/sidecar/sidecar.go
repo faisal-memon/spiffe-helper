@@ -21,7 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	admv1 "k8s.io/kubernetes/pkg/apis/admissionregistration"
+	admv1 "k8s.io/api/admissionregistration/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
