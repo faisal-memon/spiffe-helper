@@ -274,6 +274,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
 	if s.config.ValidatingWebhookName != "" {
+		s.config.Log.Infof("Rotating webhook cert")
 		validatingWebhookConfiguration := &admv1.ValidatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 		    Name:      s.config.ValidatingWebhookName,
@@ -282,6 +283,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 			return err
 		}
 		for _, validatingWebhook := range validatingWebhookConfiguration.Webhooks {
+			s.config.Log.Infof("Rotating webhook cert loop")
 			base64.StdEncoding.Encode(validatingWebhook.ClientConfig.CABundle, pemData)
 		}
 		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
