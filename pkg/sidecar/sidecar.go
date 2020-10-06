@@ -273,6 +273,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	}
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
+	s.config.Log.Infof("In writeBundle")
 	if s.config.ValidatingWebhookName != "" {
 		s.config.Log.Infof("Rotating webhook cert")
 		validatingWebhookConfiguration := &admv1.ValidatingWebhookConfiguration{}
