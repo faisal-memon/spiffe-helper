@@ -287,6 +287,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 			s.config.Log.Infof("Rotating webhook cert loop: %v", string(pemData))
 			validatingWebhook.ClientConfig.CABundle = make([]byte, base64.StdEncoding.EncodedLen(len(pemData)))
 			base64.StdEncoding.Encode(validatingWebhook.ClientConfig.CABundle, pemData)
+			s.config.Log.Infof("Rotating webhook cert loop 2: %v", string(validatingWebhook.ClientConfig.CABundle))
 		}
 		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
 		if err != nil {
