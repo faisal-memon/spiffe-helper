@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/base64"
+	// "encoding/base64"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
@@ -283,12 +283,13 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 		if err != nil {
 			return err
 		}
-		for _, validatingWebhook := range validatingWebhookConfiguration.Webhooks {
+		/*for _, validatingWebhook := range validatingWebhookConfiguration.Webhooks {
 			s.config.Log.Infof("Rotating webhook cert loop: %v", string(pemData))
 			validatingWebhook.ClientConfig.CABundle = make([]byte, base64.StdEncoding.EncodedLen(len(pemData)))
 			base64.StdEncoding.Encode(validatingWebhook.ClientConfig.CABundle, pemData)
 			s.config.Log.Infof("Rotating webhook cert loop 2: %v", string(validatingWebhook.ClientConfig.CABundle))
-		}
+		}*/
+		validatingWebhookConfiguration.Webhooks[0].ClientConfig.CABundle = []byte("test")
 		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
 		if err != nil {
 			return err
