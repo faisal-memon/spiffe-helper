@@ -20,7 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	admv1 "k8s.io/api/admissionregistration/v1beta1"
+	adm "k8s.io/api/admissionregistration/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -256,9 +256,9 @@ func (s *Sidecar) dumpBundles(svidResponse *workloadapi.X509Context) error {
 		return err
 	}
 
-
 	return nil
 }
+
 // writeBundle takes an array of certificates,
 // and encodes them as PEM blocks, writing them to file
 func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
@@ -273,17 +273,35 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
 	if s.config.ValidatingWebhookName != "" {
-		validatingWebhookConfiguration := &admv1.ValidatingWebhookConfiguration{}
+		validatingWebhookConfiguration := &adm.ValidatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
-		    Name:      s.config.ValidatingWebhookName,
+			Name: s.config.ValidatingWebhookName,
 		}, validatingWebhookConfiguration)
 		if err != nil {
 			return err
 		}
-		for i, _ := range validatingWebhookConfiguration.Webhooks {
+		for i := range validatingWebhookConfiguration.Webhooks {
 			validatingWebhookConfiguration.Webhooks[i].ClientConfig.CABundle = pemData
 		}
 		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Rotate cabundle field of MutatingWebhookConfiguration
+	if s.config.MutatingWebhookName != "" {
+		mutatingWebhookConfiguration := &adm.MutatingWebhookConfiguration{}
+		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
+			Name: s.config.MutatingWebhookName,
+		}, mutatingWebhookConfiguration)
+		if err != nil {
+			return err
+		}
+		for i := range mutatingWebhookConfiguration.Webhooks {
+			mutatingWebhookConfiguration.Webhooks[i].ClientConfig.CABundle = pemData
+		}
+		err = s.config.Client.Update(s.config.Ctx, mutatingWebhookConfiguration)
 		if err != nil {
 			return err
 		}
