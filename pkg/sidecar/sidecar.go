@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	// "encoding/base64"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
@@ -273,9 +272,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	}
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
-	s.config.Log.Infof("In writeBundle")
 	if s.config.ValidatingWebhookName != "" {
-		s.config.Log.Infof("Rotating webhook cert")
 		validatingWebhookConfiguration := &admv1.ValidatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 		    Name:      s.config.ValidatingWebhookName,
@@ -284,12 +281,8 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 			return err
 		}
 		for i, _ := range validatingWebhookConfiguration.Webhooks {
-			s.config.Log.Infof("Rotating webhook cert loop: %v", string(pemData))
 			validatingWebhookConfiguration.Webhooks[i].ClientConfig.CABundle = pemData
-			//base64.StdEncoding.Encode(validatingWebhook.ClientConfig.CABundle, pemData)
-			// s.config.Log.Infof("Rotating webhook cert loop 2: %v", string(validatingWebhook.ClientConfig.CABundle))
 		}
-		//validatingWebhookConfiguration.Webhooks[0].ClientConfig.CABundle = []byte("test")
 		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
 		if err != nil {
 			return err
