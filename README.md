@@ -14,11 +14,11 @@ The configuration file is an [HCL](https://github.com/hashicorp/hcl) formatted f
 
  |Configuration        | Description                                                                                    | Example Value |
  |--------------------------|------------------------------------------------------------------------------------------------| ------------- |
+ |`addIntermediatesToBundle`| Add intermediate certificates into Bundle file instead of SVID file.                           | `true`                                                                                                                                                               |
  |`agentAddress`            | Socket address of SPIRE Agent.                                                                 | `"/tmp/agent.sock"`                                                                                                                                                  |
  |`cmd`                     | The path to the process to launch.                                                             | `"ghostunnel"`                                                                                                                                                       |
  |`cmdArgs`                 | The arguments of the process to launch.                                                        | `"server --listen localhost:8002 --target localhost:8001--keystore certs/svid_key.pem --cacert certs/svid_bundle.pem --allow-uri-san spiffe://example.org/Database"` |
  |`certDir`                 | Directory name to store the fetched certificates. This directory must be created previously.   | `"certs"`                                                                                                                                                            |
- |`addIntermediatesToBundle`| Add intermediate certificates into Bundle file instead of SVID file.                           | `true`                                                                                                                                                            |
  |`renewSignal`             | The signal that the process to be launched expects to reload the certificates.                 | `"SIGUSR1"`                                                                                                                                                          |
  |`svidFileName`            | File name to be used to store the X.509 SVID public certificate in PEM format.                 | `"svid.pem"`                                                                                                                                                         |
  |`svidKeyFileName`         | File name to be used to store the X.509 SVID private key and public certificate in PEM format. | `"svid_key.pem"`                                                                                                                                                     |
@@ -35,3 +35,7 @@ svidFileName = "svid.pem"
 svidKeyFileName = "svid_key.pem"
 svidBundleFileName = "svid_bundle.pem"
 ```
+
+#### Adding intermediate certificates into bundle
+Enabling the `addIntermediatesToBundle` option merges intermediate certificates into the Bundle file instead of SVID file. This is useful in
+some scenarios like MySQL, where this is the expected format for presented certificates and bundles.

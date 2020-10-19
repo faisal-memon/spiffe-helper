@@ -26,9 +26,6 @@ import (
 
 // Config contains config variables when creating a SPIFFE Sidecar.
 type Config struct {
-	// Merge intermediate certificates into Bundle file instead of SVID file,
-	// it is useful is some scenarios like MySQL,
-	// where this is the expected format for presented certificates and bundles
 	AddIntermediatesToBundle bool   `hcl:"addIntermediatesToBundle"`
 	AgentAddress             string `hcl:"agentAddress"`
 	Cmd                      string `hcl:"cmd"`
@@ -40,7 +37,7 @@ type Config struct {
 	SvidBundleFileName       string `hcl:"svidBundleFileName"`
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
-	ValidatingWebhookName    string `hcl:"validatingWebhookName"`
+	ValidatingWebhookName    string
 	Client                   client.Client
 	Ctx                      context.Context
 	ReloadExternalProcess    func() error
@@ -149,8 +146,7 @@ func (s *Sidecar) CertReadyChan() <-chan struct{} {
 // signalProcess sends the configured Renew signal to the process running the proxy
 // to reload itself so that the proxy uses the new SVID
 func (s *Sidecar) signalProcess() (err error) {
-	switch s.config.ReloadExternalProcess {
-	case nil:
+	if s.config.Cmd != "" {
 		if atomic.LoadInt32(&s.processRunning) == 0 {
 			cmdArgs, err := getCmdArgs(s.config.CmdArgs)
 			if err != nil {
@@ -178,8 +174,9 @@ func (s *Sidecar) signalProcess() (err error) {
 				return fmt.Errorf("error signaling process with signal: %v\n%v", sig, err)
 			}
 		}
+	}
 
-	default:
+	if s.config.ReloadExternalProcess != nil {
 		err = s.config.ReloadExternalProcess()
 		if err != nil {
 			return fmt.Errorf("error reloading external process: %v", err)
