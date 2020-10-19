@@ -231,7 +231,6 @@ func (s *Sidecar) dumpBundles(svidResponse *workloadapi.X509Context) error {
 		return fmt.Errorf("No bundles found")
 	}
 	bundles := bundleSet.X509Authorities()
-	// bundles = bundles[len(bundles)-1:]
 	privateKey := svid.PrivateKey.(crypto.PrivateKey)
 	privateKeyBytes, _ := x509.MarshalPKCS8PrivateKey(privateKey)
 
