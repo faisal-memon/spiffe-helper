@@ -1,6 +1,7 @@
 package sidecar
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -47,11 +48,13 @@ type Config struct {
 // Sidecar is the component that consumes the Workload API and renews certs
 // implements the interface Sidecar
 type Sidecar struct {
-	config         *Config
-	processRunning int32
-	process        *os.Process
-	certReadyChan  chan struct{}
-	ErrChan        chan error
+	config                       *Config
+	processRunning               int32
+	process                      *os.Process
+	certReadyChan                chan struct{}
+	ErrChan                      chan error
+	mutatingWebhookCertificate   []byte
+	validatingWebhookCertificate []byte
 }
 
 const (
@@ -269,6 +272,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
 	if s.config.ValidatingWebhookName != "" {
+		s.config.Log.Infof("Updating ValidatingWebhookConfiguration \"%s\"", s.config.ValidatingWebhookName)
 		validatingWebhookConfiguration := &adm.ValidatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 			Name: s.config.ValidatingWebhookName,
@@ -286,7 +290,8 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	}
 
 	// Rotate cabundle field of MutatingWebhookConfiguration
-	if s.config.MutatingWebhookName != "" {
+	if s.config.MutatingWebhookName != "" && !bytes.Equal(s.mutatingWebhookCertificate, pemData) {
+		s.config.Log.Infof("Updating MutatingWebhookConfiguration \"%s\"", s.config.MutatingWebhookName)
 		mutatingWebhookConfiguration := &adm.MutatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 			Name: s.config.MutatingWebhookName,
@@ -301,6 +306,7 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 		if err != nil {
 			return err
 		}
+		s.mutatingWebhookCertificate = pemData
 	}
 
 	return ioutil.WriteFile(file, pemData, certsFileMode)
