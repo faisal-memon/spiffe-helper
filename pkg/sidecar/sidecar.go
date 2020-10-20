@@ -271,8 +271,8 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	}
 
 	// Rotate cabundle field of ValidatingWebhookConfiguration
-	if s.config.ValidatingWebhookName != "" {
-		s.config.Log.Infof("Updating ValidatingWebhookConfiguration \"%s\"", s.config.ValidatingWebhookName)
+	if s.config.ValidatingWebhookName != "" && !bytes.Equal(s.validatingWebhookCertificate, pemData) {
+		s.config.Log.Infof("Updating ValidatingWebhookConfiguration \"%s\" CABundle", s.config.ValidatingWebhookName)
 		validatingWebhookConfiguration := &adm.ValidatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 			Name: s.config.ValidatingWebhookName,
@@ -287,11 +287,12 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 		if err != nil {
 			return err
 		}
+		s.validatingWebhookCertificate = pemData
 	}
 
 	// Rotate cabundle field of MutatingWebhookConfiguration
 	if s.config.MutatingWebhookName != "" && !bytes.Equal(s.mutatingWebhookCertificate, pemData) {
-		s.config.Log.Infof("Updating MutatingWebhookConfiguration \"%s\"", s.config.MutatingWebhookName)
+		s.config.Log.Infof("Updating MutatingWebhookConfiguration \"%s\" CABundle", s.config.MutatingWebhookName)
 		mutatingWebhookConfiguration := &adm.MutatingWebhookConfiguration{}
 		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
 			Name: s.config.MutatingWebhookName,
