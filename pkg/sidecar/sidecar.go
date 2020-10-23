@@ -22,7 +22,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	adm "k8s.io/api/admissionregistration/v1beta1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Config contains config variables when creating a SPIFFE Sidecar.
@@ -38,8 +41,8 @@ type Config struct {
 	SvidBundleFileName       string `hcl:"svidBundleFileName"`
 	RenewSignal              string `hcl:"renewSignal"`
 	Timeout                  string `hcl:"timeout"`
-	ValidatingWebhookName    string
-	Client                   client.Client
+	ValidatingWebhookName    string `hcl:"validatingWebhookName"`
+	KubeConfigFilePath       string `hcl:"kubeConfigFilePath"`
 	Ctx                      context.Context
 	ReloadExternalProcess    func() error
 	Log                      logger.Logger
@@ -48,6 +51,7 @@ type Config struct {
 // Sidecar is the component that consumes the Workload API and renews certs
 // implements the interface Sidecar
 type Sidecar struct {
+	client                       *kubernetes.Clientset
 	config                       *Config
 	processRunning               int32
 	process                      *os.Process
@@ -67,15 +71,20 @@ const (
 )
 
 // NewSidecar creates a new SPIFFE sidecar
-func NewSidecar(config *Config) *Sidecar {
+func NewSidecar(config *Config) (*Sidecar, error) {
 	if config.Log == nil {
 		config.Log = logger.Std
 	}
+	client, err := newKubeClient(config.KubeConfigFilePath)
+	if err != nil {
+		return nil, err
+	}
 	return &Sidecar{
+		client:        client,
 		config:        config,
 		certReadyChan: make(chan struct{}),
 		ErrChan:       make(chan error),
-	}
+	}, nil
 }
 
 // RunDaemon starts the main loop
@@ -273,17 +282,14 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	// Rotate cabundle field of ValidatingWebhookConfiguration
 	if s.config.ValidatingWebhookName != "" && !bytes.Equal(s.validatingWebhookCertificate, pemData) {
 		s.config.Log.Infof("Updating ValidatingWebhookConfiguration \"%s\" CABundle", s.config.ValidatingWebhookName)
-		validatingWebhookConfiguration := &adm.ValidatingWebhookConfiguration{}
-		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
-			Name: s.config.ValidatingWebhookName,
-		}, validatingWebhookConfiguration)
+		validatingWebhookConfiguration, err := s.client.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Get(s.config.Ctx, s.config.ValidatingWebhookName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 		for i := range validatingWebhookConfiguration.Webhooks {
 			validatingWebhookConfiguration.Webhooks[i].ClientConfig.CABundle = pemData
 		}
-		err = s.config.Client.Update(s.config.Ctx, validatingWebhookConfiguration)
+		_, err = s.client.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Update(s.config.Ctx, validatingWebhookConfiguration, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -294,16 +300,14 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	if s.config.MutatingWebhookName != "" && !bytes.Equal(s.mutatingWebhookCertificate, pemData) {
 		s.config.Log.Infof("Updating MutatingWebhookConfiguration \"%s\" CABundle", s.config.MutatingWebhookName)
 		mutatingWebhookConfiguration := &adm.MutatingWebhookConfiguration{}
-		err := s.config.Client.Get(s.config.Ctx, client.ObjectKey{
-			Name: s.config.MutatingWebhookName,
-		}, mutatingWebhookConfiguration)
+		mutatingWebhookConfiguration, err := s.client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(s.config.Ctx, s.config.MutatingWebhookName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 		for i := range mutatingWebhookConfiguration.Webhooks {
 			mutatingWebhookConfiguration.Webhooks[i].ClientConfig.CABundle = pemData
 		}
-		err = s.config.Client.Update(s.config.Ctx, mutatingWebhookConfiguration)
+		_, err = s.client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Update(s.config.Ctx, mutatingWebhookConfiguration, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -353,4 +357,24 @@ func GetTimeout(config *Config) (time.Duration, error) {
 		return 0, err
 	}
 	return t, nil
+}
+
+func newKubeClient(configPath string) (*kubernetes.Clientset, error) {
+	config, err := getKubeConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func getKubeConfig(configPath string) (*rest.Config, error) {
+	if configPath != "" {
+		return clientcmd.BuildConfigFromFlags("", configPath)
+	}
+	return rest.InClusterConfig()
 }
