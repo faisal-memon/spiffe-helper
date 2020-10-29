@@ -83,7 +83,7 @@ func NewSidecar(config *Config) (*Sidecar, error) {
 		client:        client,
 		config:        config,
 		certReadyChan: make(chan struct{}),
-		ErrChan:       make(chan error),
+		ErrChan:       make(chan error, 1),
 	}, nil
 }
 
@@ -101,7 +101,7 @@ func (s *Sidecar) RunDaemon() error {
 		defer client.Close()
 		err := client.WatchX509Context(s.config.Ctx, &x509Watcher{s})
 		if err != nil && status.Code(err) != codes.Canceled {
-			s.config.Log.Errorf("Error watching X.509 context: %v", err)
+			s.ErrChan <- fmt.Errorf("Error watching X.509 context: %v", err)
 		}
 	}()
 
