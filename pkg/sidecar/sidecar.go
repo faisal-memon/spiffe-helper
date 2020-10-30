@@ -21,11 +21,19 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	adm "k8s.io/api/admissionregistration/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+)
+
+const (
+	// default timeout Duration for the workloadAPI client when the defaultTimeout
+	// is not configured in the .conf file
+	defaultTimeout = 5 * time.Second
+
+	certsFileMode = os.FileMode(0644)
+	keyFileMode   = os.FileMode(0600)
 )
 
 // Config contains config variables when creating a SPIFFE Sidecar.
@@ -61,15 +69,6 @@ type Sidecar struct {
 	validatingWebhookCertificate []byte
 }
 
-const (
-	// default timeout Duration for the workloadAPI client when the defaultTimeout
-	// is not configured in the .conf file
-	defaultTimeout = 5 * time.Second
-
-	certsFileMode = os.FileMode(0644)
-	keyFileMode   = os.FileMode(0600)
-)
-
 // NewSidecar creates a new SPIFFE sidecar
 func NewSidecar(config *Config) (*Sidecar, error) {
 	if config.Log == nil {
@@ -80,11 +79,27 @@ func NewSidecar(config *Config) (*Sidecar, error) {
 		return nil, err
 	}
 	return &Sidecar{
+		certReadyChan: make(chan struct{}),
 		client:        client,
 		config:        config,
-		certReadyChan: make(chan struct{}),
 		ErrChan:       make(chan error, 1),
 	}, nil
+}
+
+// GetTimeout parses a time.Duration from the the Config,
+// if there's an error during parsing, maybe because
+// it's not well defined or not defined at all in the
+// config, returns the defaultTimeout constant
+func GetTimeout(config *Config) (time.Duration, error) {
+	if config.Timeout == "" {
+		return defaultTimeout, nil
+	}
+
+	t, err := time.ParseDuration(config.Timeout)
+	if err != nil {
+		return 0, err
+	}
+	return t, nil
 }
 
 // RunDaemon starts the main loop
@@ -101,53 +116,11 @@ func (s *Sidecar) RunDaemon() error {
 		defer client.Close()
 		err := client.WatchX509Context(s.config.Ctx, &x509Watcher{s})
 		if err != nil && status.Code(err) != codes.Canceled {
-			w.sidecar.config.Log.Infof("Wathcing x509 context: %v", err)
+			s.ErrChan <- err
 		}
 	}()
 
 	return nil
-}
-
-// x509Watcher is a sample implementation of the workload.X509SVIDWatcher interface
-type x509Watcher struct {
-	sidecar *Sidecar
-}
-
-// OnX509ContextUpdate is run every time an SVID is updated
-func (w x509Watcher) OnX509ContextUpdate(svids *workloadapi.X509Context) {
-	for _, svid := range svids.SVIDs {
-		w.sidecar.config.Log.Infof("SVID updated for spiffeID: %q", svid.ID)
-	}
-
-	updateCertificates(w.sidecar, svids)
-}
-
-// OnX509ContextWatchError is run when the client runs into an error
-func (w x509Watcher) OnX509ContextWatchError(err error) {
-	if status.Code(err) != codes.Canceled {
-		w.sidecar.ErrChan <- err
-	}
-}
-
-// Updates the certificates stored in disk and signal the Process to restart
-func updateCertificates(s *Sidecar, svidResponse *workloadapi.X509Context) {
-	s.config.Log.Infof("Updating certificates")
-
-	err := s.dumpBundles(svidResponse)
-	if err != nil {
-		s.config.Log.Errorf("unable to dump bundle: %v", err)
-		return
-	}
-
-	err = s.signalProcess()
-	if err != nil {
-		s.config.Log.Errorf("unable to signal process: %v", err)
-	}
-
-	select {
-	case s.certReadyChan <- struct{}{}:
-	default:
-	}
 }
 
 // CertReadyChan returns a channel to know when the certificates are ready
@@ -198,23 +171,6 @@ func (s *Sidecar) signalProcess() (err error) {
 	return nil
 }
 
-// getCmdArgs receives the command line arguments as a string
-// and split it at spaces, except when the space is inside quotation marks
-func getCmdArgs(args string) ([]string, error) {
-	if args == "" {
-		return []string{}, nil
-	}
-
-	r := csv.NewReader(strings.NewReader(args))
-	r.Comma = ' ' // space
-	cmdArgs, err := r.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	return cmdArgs, nil
-}
-
 func (s *Sidecar) checkProcessExit() {
 	atomic.StoreInt32(&s.processRunning, 1)
 	_, err := s.process.Wait()
@@ -240,7 +196,7 @@ func (s *Sidecar) dumpBundles(svidResponse *workloadapi.X509Context) error {
 	certs := svid.Certificates
 	bundleSet, found := svidResponse.Bundles.Get(svid.ID.TrustDomain())
 	if !found {
-		return fmt.Errorf("No bundles found")
+		return fmt.Errorf("no bundles found")
 	}
 	bundles := bundleSet.X509Authorities()
 	privateKey := svid.PrivateKey.(crypto.PrivateKey)
@@ -299,7 +255,6 @@ func (s *Sidecar) writeBundle(file string, certs []*x509.Certificate) error {
 	// Rotate cabundle field of MutatingWebhookConfiguration
 	if s.config.MutatingWebhookName != "" && !bytes.Equal(s.mutatingWebhookCertificate, pemData) {
 		s.config.Log.Infof("Updating MutatingWebhookConfiguration \"%s\" CABundle", s.config.MutatingWebhookName)
-		mutatingWebhookConfiguration := &adm.MutatingWebhookConfiguration{}
 		mutatingWebhookConfiguration, err := s.client.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(s.config.Ctx, s.config.MutatingWebhookName, metav1.GetOptions{})
 		if err != nil {
 			return err
@@ -343,20 +298,46 @@ func (s *Sidecar) writeKey(file string, data []byte) error {
 	return ioutil.WriteFile(file, pem.EncodeToMemory(b), keyFileMode)
 }
 
-// parses a time.Duration from the the Config,
-// if there's an error during parsing, maybe because
-// it's not well defined or not defined at all in the
-// config, returns the defaultTimeout constant
-func GetTimeout(config *Config) (time.Duration, error) {
-	if config.Timeout == "" {
-		return defaultTimeout, nil
+// x509Watcher is a sample implementation of the workload.X509SVIDWatcher interface
+type x509Watcher struct {
+	sidecar *Sidecar
+}
+
+// OnX509ContextUpdate is run every time an SVID is updated
+func (w x509Watcher) OnX509ContextUpdate(svids *workloadapi.X509Context) {
+	for _, svid := range svids.SVIDs {
+		w.sidecar.config.Log.Infof("SVID updated for spiffeID: %q", svid.ID)
 	}
 
-	t, err := time.ParseDuration(config.Timeout)
-	if err != nil {
-		return 0, err
+	updateCertificates(w.sidecar, svids)
+}
+
+// OnX509ContextWatchError is run when the client runs into an error
+func (w x509Watcher) OnX509ContextWatchError(err error) {
+	if status.Code(err) != codes.Canceled {
+		w.sidecar.config.Log.Infof("Watching x509 context: %v", err)
 	}
-	return t, nil
+}
+
+// Updates the certificates stored in disk and signals the Process to restart
+func updateCertificates(s *Sidecar, svidResponse *workloadapi.X509Context) {
+	s.config.Log.Infof("Updating certificates")
+
+	err := s.dumpBundles(svidResponse)
+	if err != nil {
+		s.config.Log.Errorf("unable to dump bundle: %v", err)
+		return
+	}
+
+	err = s.signalProcess()
+	if err != nil {
+		s.config.Log.Errorf("unable to signal process: %v", err)
+	}
+
+	select {
+	case s.certReadyChan <- struct{}{}:
+	default:
+	}
 }
 
 func newKubeClient(configPath string) (*kubernetes.Clientset, error) {
@@ -377,4 +358,21 @@ func getKubeConfig(configPath string) (*rest.Config, error) {
 		return clientcmd.BuildConfigFromFlags("", configPath)
 	}
 	return rest.InClusterConfig()
+}
+
+// getCmdArgs receives the command line arguments as a string
+// and split it at spaces, except when the space is inside quotation marks
+func getCmdArgs(args string) ([]string, error) {
+	if args == "" {
+		return []string{}, nil
+	}
+
+	r := csv.NewReader(strings.NewReader(args))
+	r.Comma = ' ' // space
+	cmdArgs, err := r.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	return cmdArgs, nil
 }
