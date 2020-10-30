@@ -73,7 +73,7 @@ const (
 // NewSidecar creates a new SPIFFE sidecar
 func NewSidecar(config *Config) (*Sidecar, error) {
 	if config.Log == nil {
-		config.Log = logger.Std
+		config.Log = logger.Null
 	}
 	client, err := newKubeClient(config.KubeConfigFilePath)
 	if err != nil {
@@ -101,7 +101,7 @@ func (s *Sidecar) RunDaemon() error {
 		defer client.Close()
 		err := client.WatchX509Context(s.config.Ctx, &x509Watcher{s})
 		if err != nil && status.Code(err) != codes.Canceled {
-			s.ErrChan <- fmt.Errorf("Error watching X.509 context: %v", err)
+			w.sidecar.config.Log.Infof("Wathcing x509 context: %v", err)
 		}
 	}()
 
