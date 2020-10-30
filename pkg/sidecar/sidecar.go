@@ -123,6 +123,26 @@ func (s *Sidecar) RunDaemon() error {
 	return nil
 }
 
+// Updates the certificates stored in disk and signal the Process to restart
+func (s *Sidecar) updateCertificates(svidResponse *workloadapi.X509Context) {
+	s.config.Log.Infof("Updating certificates")
+
+	err := s.dumpBundles(svidResponse)
+	if err != nil {
+		s.config.Log.Errorf("unable to dump bundle: %v", err)
+		return
+	}
+	err = s.signalProcess()
+	if err != nil {
+		s.config.Log.Errorf("unable to signal process: %v", err)
+	}
+
+	select {
+	case s.certReadyChan <- struct{}{}:
+	default:
+	}
+}
+
 // CertReadyChan returns a channel to know when the certificates are ready
 func (s *Sidecar) CertReadyChan() <-chan struct{} {
 	return s.certReadyChan
@@ -309,34 +329,13 @@ func (w x509Watcher) OnX509ContextUpdate(svids *workloadapi.X509Context) {
 		w.sidecar.config.Log.Infof("SVID updated for spiffeID: %q", svid.ID)
 	}
 
-	updateCertificates(w.sidecar, svids)
+	w.sidecar.updateCertificates(svids)
 }
 
 // OnX509ContextWatchError is run when the client runs into an error
 func (w x509Watcher) OnX509ContextWatchError(err error) {
 	if status.Code(err) != codes.Canceled {
 		w.sidecar.config.Log.Infof("Watching x509 context: %v", err)
-	}
-}
-
-// Updates the certificates stored in disk and signals the Process to restart
-func updateCertificates(s *Sidecar, svidResponse *workloadapi.X509Context) {
-	s.config.Log.Infof("Updating certificates")
-
-	err := s.dumpBundles(svidResponse)
-	if err != nil {
-		s.config.Log.Errorf("unable to dump bundle: %v", err)
-		return
-	}
-
-	err = s.signalProcess()
-	if err != nil {
-		s.config.Log.Errorf("unable to signal process: %v", err)
-	}
-
-	select {
-	case s.certReadyChan <- struct{}{}:
-	default:
 	}
 }
 
