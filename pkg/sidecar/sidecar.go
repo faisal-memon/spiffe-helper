@@ -14,7 +14,6 @@ import (
 	"path"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/spiffe/go-spiffe/v2/logger"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -28,10 +27,6 @@ import (
 )
 
 const (
-	// default timeout Duration for the workloadAPI client when the defaultTimeout
-	// is not configured in the .conf file
-	defaultTimeout = 5 * time.Second
-
 	certsFileMode = os.FileMode(0644)
 	keyFileMode   = os.FileMode(0600)
 )
