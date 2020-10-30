@@ -81,22 +81,6 @@ func NewSidecar(config *Config) (*Sidecar, error) {
 	}, nil
 }
 
-// GetTimeout parses a time.Duration from the the Config,
-// if there's an error during parsing, maybe because
-// it's not well defined or not defined at all in the
-// config, returns the defaultTimeout constant
-func GetTimeout(config *Config) (time.Duration, error) {
-	if config.Timeout == "" {
-		return defaultTimeout, nil
-	}
-
-	t, err := time.ParseDuration(config.Timeout)
-	if err != nil {
-		return 0, err
-	}
-	return t, nil
-}
-
 // RunDaemon starts the main loop
 // Starts the workload API client to listen for new SVID updates
 // When a new SVID is received on the updateChan, the SVID certificates
