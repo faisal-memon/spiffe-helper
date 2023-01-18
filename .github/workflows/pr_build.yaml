@@ -3,7 +3,7 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 env:
-  GO_VERSION: (cat .go-version)
+  GO_VERSION: $(cat .go-version)
 permissions:
   contents: read
 
