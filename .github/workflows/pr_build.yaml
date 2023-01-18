@@ -2,15 +2,22 @@ name: PR Build
 on:
   pull_request: {}
   workflow_dispatch: {}
-env:
-  GO_VERSION: $(cat .go-version)
 permissions:
   contents: read
 
 jobs:
+  setup-env:
+    name: setup-env (linux)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Set GO_VERSION
+        run: echo "GO_VERSION=$(cat .go-version)" >> $GITHUB_ENV
+
   cache-deps:
     name: cache-deps (linux)
     runs-on: ubuntu-22.04
+    needs: setup-env
 
     permissions:
       contents: read
