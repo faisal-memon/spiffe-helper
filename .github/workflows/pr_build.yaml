@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Set GO_VERSION
-        run: echo "GO_VERSION=$(cat .go-version)" >> $GITHUB_ENV
+        run: echo "GO_VERSION=$(cat ../.go-version)" >> $GITHUB_ENV
 
   cache-deps:
     name: cache-deps (linux)
