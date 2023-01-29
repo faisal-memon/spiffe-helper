@@ -6,11 +6,12 @@ on:
 
 env:
   GO_VERSION: 1.19.5
+  RUNS_ON: ubuntu-22.04
 
 jobs:
   build:
     name: build (linux)
-    runs-on: ubuntu-22.04
+    runs-on: ${{ env.RUNS_ON }}
 
     steps:
       - name: Checkout
@@ -22,7 +23,7 @@ jobs:
       - name: Build image
         run: make build
       - name: Compress image
-        run: tar -czvf spiffe-helper-${GITHUB_REF_NAME}.tar.gz spiffe-helper
+        run: tar -czvf spiffe-helper-${{ github.ref_name }}.tar.gz spiffe-helper
       - name: Archive image
         uses: actions/upload-artifact@v3
         with:
@@ -30,7 +31,7 @@ jobs:
           path: spiffe-helper-${{ github.ref_name }}.tar.gz
 
   release:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ env.RUNS_ON }}
     needs: build
 
     permissions:
