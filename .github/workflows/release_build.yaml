@@ -27,7 +27,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: spiffe-helper
-          path: spiffe-helper-${GITHUB_REF_NAME}.tar.gz
+          path: spiffe-helper-*.tar.gz
 
   release:
     runs-on: ubuntu-22.04
