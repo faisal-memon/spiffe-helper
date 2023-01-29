@@ -22,7 +22,7 @@ jobs:
       - name: Build image
         run: make build
       - name: Compress image
-        run: tar -czvf spiffe-helper.tar.gz spiffe-helper
+        run: tar -czvf spiffe-helper-${GITHUB_REF_NAME}.tar.gz spiffe-helper
       - name: Archive image
         uses: actions/upload-artifact@v3
         with:
