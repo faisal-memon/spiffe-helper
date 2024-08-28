@@ -45,6 +45,7 @@ jobs:
   build:
     name: build (linux)
     runs-on: ubuntu-22.04
+    needs: integration-tests
 
     steps:
       - name: Checkout
@@ -92,7 +93,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push images
+      - name: Install regctl
+        uses: regclient/actions/regctl-installer@main
+      - name: Push docker image
         run: ./.github/workflows/scripts/push-images.sh ${{ github.ref_name }}
       - name: Create Release
         env:
