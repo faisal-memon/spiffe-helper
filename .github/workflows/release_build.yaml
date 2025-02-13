@@ -44,8 +44,15 @@ jobs:
 
   build:
     name: build (linux)
-    runs-on: ubuntu-22.04
     needs: integration-tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22-04
+            arch: amd64
+          - os: ubuntu-22.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
