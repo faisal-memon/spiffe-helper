@@ -47,6 +47,7 @@ dockers:
     dockerfile: Dockerfile-goreleaser
     build_flag_templates:
       - "--platform=linux/amd64"
+    skip_push: true
   - id: spiffe-helper-arm64
     goarch: arm64
     image_templates:
@@ -55,6 +56,7 @@ dockers:
     dockerfile: Dockerfile-goreleaser
     build_flag_templates:
       - "--platform=linux/arm64"
+    skip_push: true
 
 docker_manifests:
   - name_template: "{{ .Env.DOCKER_REPO }}:{{ .Version}}"
