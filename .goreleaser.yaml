@@ -29,6 +29,7 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+      -{{- Version}}
     files:
       - README.md
       - LICENSE
@@ -44,14 +45,14 @@ changelog:
       - "^docs:"
       - "^test:"
 
-kos:
-  - repositories:
-      - ghcr.io/spiffe/spiffe-helper
-    tags:
-      - "{{.Version}}"
-      - latest
-    bare: true
-    preserve_import_paths: false
-    platforms:
-      - linux/amd64
-      - linux/arm64
+#kos:
+#  - repositories:
+#      - ghcr.io/spiffe/spiffe-helper
+#    tags:
+#      - "{{.Version}}"
+#      - latest
+#    bare: true
+#    preserve_import_paths: false
+#    platforms:
+#      - linux/amd64
+#      - linux/arm64
