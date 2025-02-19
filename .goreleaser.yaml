@@ -57,7 +57,7 @@ dockers:
     build_flag_templates:
       - "--platform=linux/arm64"
 
- docker_manifests:
+docker_manifests:
   - name_template: - "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}"
     image_templates:
       - "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}-amd64"
