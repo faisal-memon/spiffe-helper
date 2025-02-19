@@ -58,7 +58,7 @@ dockers:
       - "--platform=linux/arm64"
 
 docker_manifests:
-  - name_template: - "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}"
+  - name_template: "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}"
     image_templates:
       - "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}-amd64"
       - "ghcr.io/{{ .Release.GitHub.Owner }}/spiffe-helper:{{ .Version}}-arm64"
