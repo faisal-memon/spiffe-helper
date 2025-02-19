@@ -8,13 +8,12 @@ before:
     - go mod tidy
 
 builds:
-  - env:
+  - binary: spiffe-helper
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
     main: ./cmd/spiffe-helper
-    binary: spire-helper
-    id: spire-helper
 
 archives:
   - format: tar.gz
@@ -29,7 +28,7 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-      -{{- Version}}
+      -{{- .Version}}
     files:
       - README.md
       - LICENSE
