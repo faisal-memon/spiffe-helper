@@ -4,7 +4,6 @@ version: 2
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
 
 builds:
@@ -19,10 +18,10 @@ builds:
     main: ./cmd/spiffe-helper
 
 archives:
-  - formats: [ 'tar.gz' ]
+  - id: spiffe-helper
+    formats: [ 'tar.gz' ]
     builds:
       - spiffe-helper
-    id: spiffe-helper
     # This name template makes the OS and Arch compatible with the results of `uname`
     name_template: >-
       spiffe-helper_{{- .Version}}_
