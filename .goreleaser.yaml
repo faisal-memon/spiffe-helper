@@ -43,7 +43,7 @@ dockers:
   - id: spiffe-helper-amd64
     goarch: amd64
     image_templates:
-      - "ghcr.io/faisal-memon/spiffe-helper:{{ .Version}}-amd64"
+      - "{{ .Env.DOCKER_REPO }}:{{ .Version}}-amd64"
     use: buildx
     dockerfile: Dockerfile-goreleaser
     build_flag_templates:
@@ -51,17 +51,17 @@ dockers:
   - id: spiffe-helper-arm64
     goarch: arm64
     image_templates:
-      - "ghcr.io/faisal-memon/spiffe-helper:{{ .Version}}-arm64"
+      - "{{ .Env.DOCKER_REPO }}:{{ .Version}}-arm64"
     use: buildx
     dockerfile: Dockerfile-goreleaser
     build_flag_templates:
       - "--platform=linux/arm64"
 
 docker_manifests:
-  - name_template: "ghcr.io/faisal-memon/spiffe-helper:{{ .Version}}"
+  - name_template: "{{ .Env.DOCKER_REPO }}:{{ .Version}}"
     image_templates:
-      - "ghcr.io/faisal-memon/spiffe-helper:{{ .Version}}-amd64"
-      - "ghcr.io/faisal-memon/spiffe-helper:{{ .Version}}-arm64"
+      - "{{ .Env.DOCKER_REPO }}:{{ .Version}}-amd64"
+      - "{{ .Env.DOCKER_REPO }}:{{ .Version}}-arm64"
 
 changelog:
   sort: asc
