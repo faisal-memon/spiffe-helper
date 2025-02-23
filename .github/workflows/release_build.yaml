@@ -61,11 +61,11 @@ jobs:
       - name: Build artifact (x86_64)
         run: make build
       - name: Compress artifact (x86_64)
-        run: tar -czvf spiffe-helper-${{ github.ref_name }}-Linux_x86_64.tar.gz spiffe-helper
+        run: tar -czvf spiffe-helper_${{ github.ref_name }}_Linux-x86_64.tar.gz spiffe-helper
       - name: Build artifact (arm64)
         run: GOARCH=arm64 make build
       - name: Compress artifact (arm64)
-        run: tar -czvf spiffe-helper-${{ github.ref_name }}-Linux_Arm64.tar.gz spiffe-helper
+        run: tar -czvf spiffe-helper_${{ github.ref_name }}_Linux-arm64.tar.gz spiffe-helper
       - name: Build docker artifact
         run: make docker-build
       - name: Archive artifact
@@ -73,8 +73,8 @@ jobs:
         with:
           name: spiffe-helper
           path: |
-            spiffe-helper-${{ github.ref_name }}-Linux_x86_64.tar.gz
-            spiffe-helper-${{ github.ref_name }}-Linux_Arm64.tar.gz
+            spiffe-helper_${{ github.ref_name }}_Linux-x86_64.tar.gz
+            spiffe-helper_${{ github.ref_name }}_Linux-arm64.tar.gz
             spiffe-helper-image.tar
 
   release:
