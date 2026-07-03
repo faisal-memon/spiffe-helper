@@ -57,6 +57,8 @@ jobs:
           branch: automation/update-go-tooling
           commit-message: Update Go tooling
           title: Update Go tooling
+          committer: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+          author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
           body: |
             Updates Go and golangci-lint to their latest compatible releases.
 
