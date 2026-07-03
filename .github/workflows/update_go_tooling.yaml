@@ -43,6 +43,7 @@ jobs:
 
       - name: Apply lint fixes
         if: steps.update_go.outputs.changed == 'true' || steps.update_lint.outputs.changed == 'true'
+        continue-on-error: true
         run: make lint-fix
 
       - name: Tidy Go modules
