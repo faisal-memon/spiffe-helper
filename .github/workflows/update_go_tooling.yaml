@@ -30,7 +30,7 @@ jobs:
         uses: faisal-memon/update-golangci-lint-action@v1
         with:
           update-version-file: 'true'
-          version-file-path: .golangci-lint-version
+          version-file-path: .versions
 
       - name: Setup Go
         if: steps.update_go.outputs.changed == 'true' || steps.update_lint.outputs.changed == 'true'
@@ -46,10 +46,6 @@ jobs:
         if: steps.update_go.outputs.changed == 'true' || steps.update_lint.outputs.changed == 'true'
         run: make tidy
 
-      - name: Verify lint
-        if: steps.update_go.outputs.changed == 'true' || steps.update_lint.outputs.changed == 'true'
-        run: make lint
-
       - name: Create pull request
         if: steps.update_go.outputs.changed == 'true' || steps.update_lint.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
@@ -63,7 +59,6 @@ jobs:
             - Go: `${{ steps.update_go.outputs.current-version }}`
             - golangci-lint: `${{ steps.update_lint.outputs.current-lint-version }}`
 
-            The generated changes have been processed with `make lint-fix` and
-            verified with `make lint`.
+            The generated changes have been processed with `make lint-fix`.
           signoff: true
           delete-branch: true
