@@ -1,6 +1,9 @@
 name: Update Go Tooling
 
 on:
+  push:
+    branches:
+      - codex/add-go-update-actions
   schedule:
     # Random minute number to avoid GH scheduler stampede
     - cron: '23 16 * * 1'
