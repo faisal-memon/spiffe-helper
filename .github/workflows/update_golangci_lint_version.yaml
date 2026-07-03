@@ -1,0 +1,41 @@
+name: Update golangci-lint Version
+
+on:
+  schedule:
+    # Random minute number to avoid GH scheduler stampede
+    - cron: '41 16 * * 2'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  update-golangci-lint-version:
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Update golangci-lint version
+        id: update
+        uses: faisal-memon/update-golangci-lint-action@v1
+        with:
+          update-version-file: 'true'
+          version-file-path: .golangci-lint-version
+
+      - name: Create pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: automation/update-golangci-lint-version
+          commit-message: Update golangci-lint to ${{ steps.update.outputs.lint-version }}
+          title: Update golangci-lint to ${{ steps.update.outputs.lint-version }}
+          body: |
+            Updates golangci-lint to the latest v2 release.
+          signoff: true
+          delete-branch: true
